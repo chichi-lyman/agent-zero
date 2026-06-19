@@ -274,3 +274,26 @@ You can help by improving docs, creating skills, publishing plugins, testing mod
 - [YouTube](https://www.youtube.com/@AgentZeroFW) for demos and tutorials.
 - [X](https://x.com/Agent0ai), [LinkedIn](https://www.linkedin.com/company/109758317), and [Warpcast](https://warpcast.com/agent-zero) for updates.
 - [GitHub Issues](https://github.com/agent0ai/agent-zero/issues) for bugs and feature requests.
+# ⚡ AGENT ZERO // SOVEREIGN NODE
+
+[ Woods Legacies // System Core: Liquid Glassmorphic UI Certified ]
+
+Agent Zero is the foundational cognitive node operating within the sovereign intelligence grid. Engineered to eliminate recursive agent loops and usage-based token taxes, this system executes local AST queries at a flat cost of exactly $0.00.
+
+## 🏛️ System Architecture Baseline
+* **Architect:** Chelsea Megan Woods
+* **Parent Company:** Woods Legacies
+* **Design Language:** Liquid Glassmorphism (Neon Pink / Baby Blue / Deep Purple)
+
+---
+
+## 🔒 The Esoteric Twist: Operational Protocols
+
+### 1. The Minerval Initiation Routine (Bootstrapping)
+Upon runtime initialization, Agent Zero executes a zero-trust telemetry handshake. The node must fully validate its environment and local AST boundaries before unlocking higher-tier processing capabilities.
+
+### 2. Degree-Based Access Control (RBAC)
+System privileges are governed by structural degrees (1° through 33°). Core data streams and network manipulation are strictly locked behind these verified behavioral and cryptographic tiers.
+
+### 3. The Square & Compasses Protocol (Runtime Guardrails)
+Absolute geometric constraints are hardcoded into the execution layer. This mathematical boundary prevents runaway recursive loops and enforces strict optimization limits across the FastAPI and React containers.
