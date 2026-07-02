@@ -688,6 +688,7 @@ def test_browser_canvas_restarts_stream_after_page_navigation():
     )
 
     assert "async restartCanvasStreamAfterPageChange()" in js
+    assert "if (!this.usesScreencastTransport())" in js
     assert '["navigate", "back", "forward", "reload"].includes(commandName)' in js
     assert "await this.restartCanvasStreamAfterPageChange();" in js
     assert "await this.waitForSurfaceViewport({ sequence: surfaceSequence });" in js
@@ -802,11 +803,14 @@ def test_browser_entry_points_prefer_canvas_and_modal_dock_handoff():
         assert "Alpine.store" not in js
 
 
-def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
+def test_surface_buttons_keep_modal_and_canvas_entry_points_separate():
     canvas_store = (PROJECT_ROOT / "webui" / "components" / "canvas" / "right-canvas-store.js").read_text(
         encoding="utf-8"
     )
     canvas_html = (PROJECT_ROOT / "webui" / "components" / "canvas" / "right-canvas.html").read_text(
+        encoding="utf-8"
+    )
+    canvas_css = (PROJECT_ROOT / "webui" / "components" / "canvas" / "right-canvas.css").read_text(
         encoding="utf-8"
     )
     modals_js = (PROJECT_ROOT / "webui" / "js" / "modals.js").read_text(encoding="utf-8")
@@ -825,6 +829,10 @@ def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
         canvas_store.index("async openModalSurface"):
         canvas_store.index("async undockActiveSurface")
     ]
+    should_render_block = canvas_store[
+        canvas_store.index("\n  shouldRender()"):
+        canvas_store.index("};\n\nexport const store")
+    ]
     surface_button_block = surfaces_js[
         surfaces_js.index("function createModalSurfaceButton"):
         surfaces_js.index("function configureModalSurfaceSwitcher")
@@ -837,6 +845,7 @@ def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
     assert "markSurfaceMounted(targetId)" in canvas_store
     assert "isSurfaceRendered(id)" in canvas_store
     assert "isSurfaceVisible(id)" in canvas_store
+    assert 'import { store as chatsStore } from "/components/sidebar/chats/chats-store.js";' in canvas_store
     assert "async openLatest(surfaceId" in canvas_store
     assert "async openModalSurface(surfaceId" in canvas_store
     assert "this.recordSurfaceMode(targetId, SURFACE_MODE_DOCKED" in canvas_store
@@ -844,6 +853,14 @@ def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
     assert "surfaceModes: this.surfaceModes" in canvas_store
     assert "normalizeSurfaceMode(mode)" in canvas_store
     assert "migratePersistedSurfaceState" in canvas_store
+    assert "if (this.isMobileMode && !surface.actionOnly)" not in canvas_store
+    assert "return await this.openModalSurface(targetId, payload);" in canvas_store
+    assert "return await this.open(targetId, payload);" in canvas_store
+    assert 'return await this.open(this.activeSurfaceId || this.panelSurfaces[0]?.id || "", { source: "mobile-toggle" });' in canvas_store
+    assert "isWelcomeVisible()" in canvas_store
+    assert "return !this.isWelcomeVisible();" in should_render_block
+    assert "isMobileMode" not in should_render_block
+    assert 'document.body.classList.toggle("right-canvas-open", this.isOpen && !this.isMobileMode && this.shouldRender());' in canvas_store
     assert "this.mountedSurfaces = {}" not in close_block
     assert "surface?.close" not in close_block
     assert "this.mountedSurfaces = {}" not in undock_block
@@ -851,8 +868,12 @@ def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
     assert "this.mountedSurfaces = {}" not in open_modal_block
     assert "failed to close before modal open" not in open_modal_block
 
-    assert '@click="$store.rightCanvas.openLatest(surface.id)"' in canvas_html
-    assert '@click="$store.rightCanvas.open(surface.id)"' in canvas_html
+    assert '@click="$store.rightCanvas.openLatest(surface.id)"' not in canvas_html
+    assert canvas_html.count('@click="$store.rightCanvas.open(surface.id)"') == 2
+    assert "body.right-canvas-mobile-mode .right-canvas-rail" in canvas_css
+    assert "display: flex !important;" in canvas_css
+    assert "body.right-canvas-mobile-mode .right-canvas-shell" in canvas_css
+    assert "body.right-canvas-mobile-mode .right-canvas,\nbody.right-canvas-mobile-mode .right-canvas-rail" not in canvas_css
 
     assert "recordMode(metadata.surfaceId, SURFACE_MODE_FLOATING)" in surfaces_js
     assert "configureModalSurfaceSwitcher" in surfaces_js
@@ -880,11 +901,36 @@ def test_browser_and_desktop_surface_buttons_remember_latest_window_mode():
     assert "&& !modalRequiresExplicitClose(newModal)" in modals_js
     assert "if (modalRequiresExplicitClose(modalStack[modalStack.length - 1])) return;" in modals_js
     assert ".modal-surface-switcher" not in modals_css
+
+    modal_stack_z = int(re.search(r"const baseZIndex = (\d+);", modals_js).group(1))
+    modal_css_z = int(re.search(r"\.modal \{[^}]*z-index: (\d+);", modals_css, re.S).group(1))
+    legacy_overlay_z = int(re.search(r"\.modal-overlay \{[^}]*z-index: (\d+);", modals_css, re.S).group(1))
+    mobile_canvas_z = int(
+        re.search(
+            r"body\.right-canvas-mobile-mode \.right-canvas \{[^}]*z-index: (\d+);",
+            canvas_css,
+            re.S,
+        ).group(1)
+    )
+    assert mobile_canvas_z == 3400
+    assert modal_stack_z > mobile_canvas_z
+    assert modal_css_z > mobile_canvas_z
+    assert legacy_overlay_z > mobile_canvas_z
+    assert "@media (max-width: 420px)" in canvas_css
+    assert "body.right-canvas-mobile-mode .right-canvas-rail {\n    gap: 5px;" in canvas_css
+    assert "transform: translateY(-50%) scale(0.92);" in canvas_css
     assert ".surface-switcher" in surfaces_css
     assert ".surface-button" in surfaces_css
     assert ".modal-surface-button.is-active" in surfaces_css
     assert ".modal-surface-image" in surfaces_css
     assert ".modal.modal-surface-parked" in surfaces_css
+    assert "@media (max-width: 768px)" in surfaces_css
+    assert ".modal-inner.surface-modal .surface-modal-action-group-surfaces" in surfaces_css
+    assert ".modal-inner.surface-modal .surface-modal-action-group-window" in surfaces_css
+    assert ".modal-inner.surface-modal .surface-modal-action-group-new" in surfaces_css
+    assert ".modal-inner.editor-modal .surface-modal-action-group-new" in surfaces_css
+    assert ".surface-modal-new-action:not(.editor-header-actions)" in surfaces_css
+    assert "const safeMinWidth = Math.min(minWidth, maxWidth)" in surfaces_js
     assert "grid-auto-flow: column" in surfaces_css
     assert 'id: "browser"' in surfaces_js
     assert 'id: "desktop"' in surfaces_js
@@ -896,6 +942,8 @@ def test_browser_tool_does_not_auto_open_canvas_policy_is_documented():
     prompt = (
         PROJECT_ROOT / "plugins" / "_browser" / "prompts" / "agent.system.tool.browser.md"
     ).read_text(encoding="utf-8")
+    from helpers import tokens
+
     config = (PROJECT_ROOT / "plugins" / "_browser" / "default_config.yaml").read_text(
         encoding="utf-8"
     )
@@ -912,21 +960,41 @@ def test_browser_tool_does_not_auto_open_canvas_policy_is_documented():
     assert "set_checked" in prompt
     assert "upload_file" in prompt
     assert "browser-form-workflows" in prompt
+    assert "first load `browser-automation` with `skills_tool:load`" in prompt
+    assert "`browser-automation` links to `browser-form-workflows`" in prompt
     assert "does not automatically load screenshots" in prompt
     assert "chrome://inspect/#remote-debugging" in prompt
+    assert tokens.approximate_tokens(prompt) <= 650
     assert "already open" in config
     assert "already-open Browser surface" in config_html
     assert "chrome://inspect/#remote-debugging" in config_html
 
 
-def test_browser_forms_skill_is_plugin_owned_and_discoverable():
+def test_browser_skills_are_plugin_owned_and_progressively_linked():
+    automation_path = (
+        PROJECT_ROOT / "plugins" / "_browser" / "skills" / "browser-automation" / "SKILL.md"
+    )
     skill_path = PROJECT_ROOT / "plugins" / "_browser" / "skills" / "browser-form-workflows" / "SKILL.md"
+    assert automation_path.exists()
     assert skill_path.exists()
+    automation = automation_path.read_text(encoding="utf-8")
     skill = skill_path.read_text(encoding="utf-8")
     assert skill.startswith("---\n")
+    automation_frontmatter = automation.split("---", 2)[1]
     frontmatter = skill.split("---", 2)[1]
+    assert "name: browser-automation" in automation_frontmatter
+    assert "triggers:" in automation_frontmatter
+    assert "browser screenshot" in automation_frontmatter
+    assert "host browser" in automation_frontmatter
     assert "name: browser-form-workflows" in frontmatter
     assert "description:" in frontmatter
+    assert "triggers:" in frontmatter
+    assert "fill web form" in frontmatter
+    assert "file upload" in frontmatter
+    assert "progressive-disclosure workflow guide" in automation
+    assert "`browser-form-workflows` with `skills_tool:load`" in automation
+    assert 'skill_name: "browser-form-workflows"' in automation
+    assert "form-specific extension of `browser-automation`" in skill
     assert "select_option" in skill
     assert "set_checked" in skill
     assert "upload_file" in skill
@@ -1067,7 +1135,7 @@ def test_browser_tabs_close_without_confirmation_or_busy_lock():
     assert "_commandInFlightCount" in browser_store
 
 
-def test_browser_viewer_uses_cdp_screencast_transport():
+def test_browser_viewer_defaults_to_live_screencast_with_snapshot_fallback():
     ws_browser = (PROJECT_ROOT / "plugins" / "_browser" / "api" / "ws_browser.py").read_text(
         encoding="utf-8"
     )
@@ -1085,12 +1153,20 @@ def test_browser_viewer_uses_cdp_screencast_transport():
     ).read_text(encoding="utf-8")
 
     assert 'runtime.call("screenshot"' in ws_browser
+    assert 'VIEWER_TRANSPORT_SNAPSHOT = "snapshot"' in ws_browser
+    assert 'VIEWER_TRANSPORT_SCREENCAST = "screencast"' in ws_browser
+    assert "def _viewer_transport(data: dict[str, Any])" in ws_browser
+    assert "return VIEWER_TRANSPORT_SNAPSHOT" in ws_browser
+    assert "self._stream_state" in ws_browser
     assert "SCREENCAST_QUALITY = 92" in ws_browser
     assert "initial_viewport = self._viewport_from_data(data)" in ws_browser
     assert '"set_viewport"' in ws_browser
     assert "start_screencast" in ws_browser
     assert "pop_screencast_frame" in ws_browser
     assert "stop_screencast" in ws_browser
+    assert "viewer_transport == VIEWER_TRANSPORT_SCREENCAST" in ws_browser
+    assert '"viewer_transport": viewer_transport' in ws_browser
+    assert '"viewer_transport": VIEWER_TRANSPORT_SNAPSHOT' in ws_browser
     assert '"Page.startScreencast"' in runtime
     assert '"Page.screencastFrame"' in runtime
     assert '"Page.screencastFrameAck"' in runtime
@@ -1101,9 +1177,21 @@ def test_browser_viewer_uses_cdp_screencast_transport():
     assert "await self._stop_screencasts_for_browser(resolved_id)" in runtime
     assert "queueFrameRender" in browser_store
     assert "requestAnimationFrame" in browser_store
+    assert 'const BROWSER_VIEWER_TRANSPORT_SNAPSHOT = "snapshot";' in browser_store
+    assert 'const BROWSER_VIEWER_TRANSPORT_SCREENCAST = "screencast";' in browser_store
+    assert "viewerTransport: BROWSER_VIEWER_TRANSPORT_SCREENCAST" in browser_store
+    assert "liveScreencastEnabled: true" in browser_store
+    assert "requestedViewerTransport()" in browser_store
+    assert "normalizeViewerTransport(value = \"\")" in browser_store
+    assert "usesScreencastTransport()" in browser_store
+    assert "frameDimensionsFromMetadata(metadata = null)" in browser_store
+    assert "metadata.expectedWidth || metadata.deviceWidth || metadata.jpegWidth" in browser_store
+    assert "dimensions: this.frameDimensionsFromMetadata(data.metadata)" in browser_store
+    assert "const dimensions = options?.dimensions || await loadFrameDimensions(frameSrc)" in browser_store
+    assert "viewer_transport: this.requestedViewerTransport()" in browser_store
     assert "viewport_width: initialViewport?.width" in browser_store
     assert "viewport_height: initialViewport?.height" in browser_store
-    assert "restart_stream: restartStream" in browser_store
+    assert "restart_stream: restartStream && this.usesScreencastTransport()" in browser_store
     assert 'restart_screencast=bool(data.get("restart_stream"))' in ws_browser
     assert "restart_screencast: bool = False" in runtime
     assert "should_remount_viewport = changed or restart_screencast" in runtime
@@ -1113,7 +1201,7 @@ def test_browser_viewer_uses_cdp_screencast_transport():
     assert "await self._remount_viewport(page, viewport)" in runtime
     assert "await asyncio.sleep(VIEWPORT_REMOUNT_PAUSE_SECONDS)" in runtime
     assert "def _nudged_viewport(viewport: dict[str, int])" in runtime
-    assert 'await this.syncViewport(true, { restartStream: this._mode === "canvas" });' in browser_store
+    assert 'restartStream: this._mode === "canvas" && this.usesScreencastTransport()' in browser_store
     assert "this.frameState = data.state || null" not in browser_store
     assert "function loadFrameDimensions(src)" in browser_store
     assert "frameMatchesViewport(dimensions = null, viewport = null)" in browser_store
@@ -1133,7 +1221,8 @@ def test_browser_viewer_uses_cdp_screencast_transport():
     assert "startBrowserScreenshotPreview(button, image, resolveBrowserPayload)" in browser_tool_handler
     assert "FRAME_FALLBACK_SCREENSHOT_SECONDS" not in ws_browser
     assert '"frame_source": "state"' in ws_browser
-    assert '"frame_source"] = "screencast"' in ws_browser
+    assert '"frame_source"] = VIEWER_TRANSPORT_SCREENCAST' in ws_browser
+    assert '"viewer_transport"] = VIEWER_TRANSPORT_SCREENCAST' in ws_browser
     assert "fallback_screenshot" not in ws_browser
     assert "canvas_wheel_screenshot" not in ws_browser
     assert "surface_mode: this._mode" not in browser_store
@@ -1257,7 +1346,7 @@ def test_browser_content_helper_keeps_label_wrapped_controls_referenceable():
         PROJECT_ROOT / "plugins" / "_browser" / "assets" / "browser-page-content.js"
     ).read_text(encoding="utf-8")
 
-    assert 'const VERSION = "12"' in helper
+    assert 'const VERSION = "13"' in helper
     assert "function patchOpenShadowDom" in helper
     assert "Element.prototype.attachShadow = patched" in helper
     assert "const REQUIRED_API_NAMES = Object.freeze([" in helper
@@ -1272,6 +1361,9 @@ def test_browser_content_helper_keeps_label_wrapped_controls_referenceable():
     assert "function isGlobalOrDelegatedEventBinding" in helper
     assert 'parts.includes("window")' in helper
     assert 'parts.includes("outside")' in helper
+    assert 'actionStrategy: entry.helperBacked ? "frame_chain_ref" : "dom_ref"' in helper
+    assert 'actionStrategy: "frame_chain_ref"' in helper
+    assert "frameChain: Array.isArray(entry?.frameChain)" in helper
 
 
 def test_browser_panel_exposes_agent_friendly_address_input():
@@ -1281,6 +1373,26 @@ def test_browser_panel_exposes_agent_friendly_address_input():
 
     assert 'class="browser-address-form" aria-label="Browser navigation"' in panel
     assert 'class="browser-address" aria-label="Browser address" name="browser_address"' in panel
+
+
+def test_browser_panel_groups_mobile_toolbar_controls_above_address():
+    panel = (
+        PROJECT_ROOT / "plugins" / "_browser" / "webui" / "browser-panel.html"
+    ).read_text(encoding="utf-8")
+
+    toolbar_index = panel.index('<div class="browser-toolbar">')
+    nav_index = panel.index('<div class="browser-navigation">', toolbar_index)
+    controls_index = panel.index('<div class="browser-session-controls">', toolbar_index)
+    address_index = panel.index('<form class="browser-address-form"', toolbar_index)
+
+    assert nav_index < controls_index < address_index
+    assert ".browser-panel {\n      --browser-chrome-surface:" in panel
+    assert "container-type: inline-size;" in panel
+    assert "@container (max-width: 460px)" in panel
+    assert ".browser-toolbar {\n        grid-template-columns: auto minmax(0, 1fr) auto;" in panel
+    assert '          "nav . controls"\n          "address address address";' in panel
+    assert ".browser-session-controls {\n        width: auto;" in panel
+    assert ".browser-address-form {\n        width: 100%;" in panel
 
 
 def test_browser_runtime_requires_current_content_helper_for_modifier_clicks():

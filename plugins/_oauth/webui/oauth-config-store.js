@@ -670,6 +670,18 @@ export const store = createStore("oauthConfig", {
     }
   },
 
+  notifyModelSetupChanged(providerId) {
+    if (typeof document === "undefined") return;
+    document.dispatchEvent(new CustomEvent("model-setup-changed", {
+      detail: { source: "_oauth", providerId },
+    }));
+  },
+
+  async handleProviderConnected(providerId, { statusLoaded = false } = {}) {
+    if (!statusLoaded) await this.loadStatus();
+    this.notifyModelSetupChanged(providerId);
+  },
+
   async loadStatus() {
     if (this.loadingStatus) return;
     this.loadingStatus = true;
@@ -788,7 +800,7 @@ export const store = createStore("oauthConfig", {
           throw new Error(response?.error || `Could not finish ${this.providerLabel(providerId)} sign-in.`);
         }
         if (response.completed) {
-          await this.loadStatus();
+          await this.handleProviderConnected(providerId);
           this.clearProviderDevice(providerId);
           this.stopPolling(providerId);
           if (this.connectingProvider === providerId) this.connectingProvider = "";
@@ -840,6 +852,7 @@ export const store = createStore("oauthConfig", {
     const tick = async () => {
       await this.loadStatus();
       if (this.providerConnected(providerId)) {
+        await this.handleProviderConnected(providerId, { statusLoaded: true });
         this.clearProviderDevice(providerId);
         this.stopCallbackPolling(providerId);
         if (this.connectingProvider === providerId) this.connectingProvider = "";
@@ -932,7 +945,7 @@ export const store = createStore("oauthConfig", {
       this.providerUiFor(providerId).manualCallback = "";
       this.clearProviderDevice(providerId);
       this.stopCallbackPolling(providerId);
-      await this.loadStatus();
+      await this.handleProviderConnected(providerId);
       void toastFrontendSuccess(`${this.providerLabel(providerId)} connected.`, "OAuth Connections");
     } catch (error) {
       void toastFrontendError(messageOf(error), "OAuth Connections");

@@ -73,6 +73,7 @@ const IMPLICIT_PRESET_SLOT_DEFAULTS = {
     kwargs: {},
   },
 };
+const PRESET_REPLACE_FIELDS = new Set(['kwargs']);
 
 function presetDefaultValuesEqual(value, defaultValue) {
   if (typeof defaultValue === 'number') return Number(value) === defaultValue;
@@ -118,6 +119,14 @@ export function mergeModelSlot(baseSlot, presetSlot, stripApiKey = true, slotKey
       result[key] = clonePlain(value);
     }
   }
+  for (const key of PRESET_REPLACE_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(clean, key)) {
+      const value = clean[key];
+      result[key] = value && typeof value === 'object' && !Array.isArray(value) ? clonePlain(value) : {};
+    } else if (Object.prototype.hasOwnProperty.call(baseSlot || {}, key)) {
+      result[key] = {};
+    }
+  }
   return result;
 }
 
@@ -149,6 +158,8 @@ export const store = createStore("modelConfig", {
   embeddingProviders: [],
   chatProviderDetails: [],
   embeddingProviderDetails: [],
+  modelConfigured: false,
+  modelConfiguredLabel: "",
   _loaded: false,
 
   // API Keys state (from mixin)
@@ -194,6 +205,8 @@ export const store = createStore("modelConfig", {
     this.chatProviderDetails = data.chat_provider_details || [];
     this.embeddingProviderDetails = data.embedding_provider_details || [];
     this.apiKeyStatus = data.api_key_status || {};
+    this.modelConfigured = !!data.model_configured;
+    this.modelConfiguredLabel = data.model_configured_label || "";
     const keys = {};
     const dirty = {};
     const seen = new Set();
